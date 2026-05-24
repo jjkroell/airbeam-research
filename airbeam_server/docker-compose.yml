@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  airbeam:
+    build: .
+    container_name: airbeam-research
+    restart: always
+    ports:
+      - "3500:5000"
+    volumes:
+      - ./airbeam.db:/app/airbeam.db
