@@ -1,27 +1,27 @@
  name: Deploy to Server
 
-  "on":
-    push:
+"on":
+   push:
       branches:
         - main
 
-  jobs:
-    deploy:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Install cloudflared
-          run: |
-            wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-            sudo dpkg -i cloudflared-linux-amd64.deb
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install cloudflared
+        run: |
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+       - name: Deploy via SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "Host ${{ secrets.DEPLOY_HOST }}
+            StrictHostKeyChecking no
+            ProxyCommand cloudflared access ssh --hostname %h" > ~/.ssh/config
+          ssh -i ~/.ssh/deploy_key sasha@${{ secrets.DEPLOY_HOST }} "/home/sasha/site/deploy.sh"
 
-        - name: Deploy via SSH
-          env:
-            DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          run: |
-            mkdir -p ~/.ssh
-            echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            echo "Host ${{ secrets.DEPLOY_HOST }}
-              StrictHostKeyChecking no
-              ProxyCommand cloudflared access ssh --hostname %h" > ~/.ssh/config
-            ssh -i ~/.ssh/deploy_key sasha@${{ secrets.DEPLOY_HOST }} "/home/sasha/site/deploy.sh"
