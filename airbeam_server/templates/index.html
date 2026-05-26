@@ -102,7 +102,7 @@ window.addEventListener('load', function() {
       if(ti===-1||p25i===-1)return;
       var dr=rows.slice(1).map(function(r){
         return{ts:r[ti],pm1:parseFloat(r[p1i]),pm25:parseFloat(r[p25i]),
-          pm10:parseFloat(r[p10i]),rh:parseFloat(r[rhi]),temp:parseFloat(r[tmi]),
+          pm10:parseFloat(r[p10i]),rh:parseFloat(r[rhi]),temp:(parseFloat(r[tmi])-32)*5/9,
           note:ni>=0?r[ni]:null,name:nmi>=0?r[nmi]:sn};
       }).filter(function(r){return r.ts&&!isNaN(r.pm25);});
       if(!dr.length)return;
@@ -240,6 +240,14 @@ window.addEventListener('load', function() {
   function SessionCharts(props){
     var session=props.session,activeMetric=props.activeMetric,onMetricChange=props.onMetricChange;
     var ts=session.timeSeries,nm=session.noteMarkers;
+    var eni=useState(null),editNIdx=eni[0],setEditNIdx=eni[1];
+    var nd=useState(""),noteDraft=nd[0],setNoteDraft=nd[1];
+    function saveNote(idx){
+      if(!props.onNoteEdit)return;
+      var updated=nm.map(function(n,i){return i===idx?Object.assign({},n,{note:noteDraft}):n;});
+      props.onNoteEdit(updated);
+      setEditNIdx(null);
+    }
     if(!ts||!ts.length)return e('div',{style:{textAlign:"center",padding:16,color:"#334155",fontFamily:"monospace",fontSize:12}},"Upload merged_sessions.xlsx to see graphs");
     var metrics=[
       {key:"pm25",color:"#60a5fa"},{key:"pm10",color:"#a78bfa"},
@@ -260,10 +268,26 @@ window.addEventListener('load', function() {
         return e(SVGChart,{key:m.key,timeSeries:ts,noteMarkers:nm,metric:m.key,thresholds:m.thresholds,label:m.label,color:m.color,unit:m.unit});
       }),
       nm&&nm.length?e('div',{style:{borderTop:"1px solid #1e293b",marginTop:6,paddingTop:6}},
+        e('div',{style:{fontSize:9,color:"#475569",fontFamily:"monospace",marginBottom:4,letterSpacing:1}},"AIRBEAM NOTES"),
         nm.map(function(n,i){
-          return e('div',{key:i,style:{display:"flex",gap:6,marginBottom:4,fontSize:11,fontFamily:"monospace"}},
-            e('span',{style:{color:"#94a3b8"}},n.t.slice(0,5)),
-            e('span',{style:{color:"#64748b",marginLeft:6}},n.note));
+          var isEditing=editNIdx===i;
+          return e('div',{key:i,style:{display:"flex",gap:6,marginBottom:6,fontSize:11,fontFamily:"monospace",alignItems:"center"}},
+            e('span',{style:{color:"#94a3b8",minWidth:32,flexShrink:0}},n.t.slice(0,5)),
+            isEditing
+              ?e('div',{style:{display:"flex",gap:4,flex:1}},
+                  e('input',{autoFocus:true,value:noteDraft,
+                    onChange:function(ev){setNoteDraft(ev.target.value);},
+                    onKeyDown:function(ev){if(ev.key==='Enter')saveNote(i);if(ev.key==='Escape')setEditNIdx(null);},
+                    style:{flex:1,background:"#1e293b",border:"1px solid #3b82f6",borderRadius:4,padding:"2px 6px",color:"#e2e8f0",fontSize:11,fontFamily:"monospace"}}),
+                  e('button',{onClick:function(){saveNote(i);},style:{background:"#3b82f6",border:"none",borderRadius:4,padding:"2px 8px",color:"#fff",fontSize:10,cursor:"pointer"}},"Save"),
+                  e('button',{onClick:function(){setEditNIdx(null);},style:{background:"#334155",border:"none",borderRadius:4,padding:"2px 6px",color:"#94a3b8",fontSize:10,cursor:"pointer"}},"✕")
+                )
+              :e('div',{style:{display:"flex",gap:6,flex:1,alignItems:"center"}},
+                  e('span',{style:{color:"#64748b",flex:1}},n.note),
+                  props.onNoteEdit?e('button',{onClick:function(){setEditNIdx(i);setNoteDraft(n.note||"");},
+                    style:{background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:12,padding:"0 3px",lineHeight:1,flexShrink:0}},"✎"):null
+                )
+          );
         })
       ):null
     );
@@ -324,7 +348,8 @@ window.addEventListener('load', function() {
         e('span',{style:{color:"#475569",marginLeft:8}},expanded?"▲":"▼")
       ),
       expanded?e('div',{style:{padding:"0 14px 14px",borderTop:"1px solid #334155"}},
-        e('div',{style:{marginTop:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric})),
+        e('div',{style:{marginTop:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric,
+            onNoteEdit:props.onUpdateNoteMarkers?function(updated){props.onUpdateNoteMarkers(sess.id,updated);}:null})),
         e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}},
           e(StatBadge,{label:"PM1",value:sess.pm1,unit:"µg/m³",metric:"pm1"}),
           e(StatBadge,{label:"PM2.5 avg",value:sess.pm25,unit:"µg/m³",metric:"pm25"}),
@@ -437,7 +462,7 @@ window.addEventListener('load', function() {
         e('div',{style:{padding:"12px 16px"}},
           props.sessions.length===0?e('div',{style:{textAlign:"center",padding:"24px 0",color:"#334155",fontFamily:"monospace",fontSize:12}},"No sessions yet — upload merged_sessions.xlsx or click + Add"):
           props.sessions.map(function(sess){
-            return e(SessionRow,{key:sess.id,s:sess,meta:meta,onEdit:props.onEdit,onDelete:props.onDelete,onUpdatePhotos:props.onUpdatePhotos});
+            return e(SessionRow,{key:sess.id,s:sess,meta:meta,onEdit:props.onEdit,onDelete:props.onDelete,onUpdatePhotos:props.onUpdatePhotos,onUpdateNoteMarkers:props.onUpdateNoteMarkers});
           })
         )
       ):null
@@ -561,6 +586,10 @@ window.addEventListener('load', function() {
       fetch('/api/sessions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({notePhotos:photos})}).catch(function(){});
       setSessions(function(ss){return ss.map(function(s){return s.id===id?Object.assign({},s,{notePhotos:photos}):s;});});
     }
+    function handleUpdateNoteMarkers(id,noteMarkers){
+      fetch('/api/sessions/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({noteMarkers:noteMarkers})}).catch(function(){showToast('Could not save note',false);});
+      setSessions(function(ss){return ss.map(function(s){return s.id===id?Object.assign({},s,{noteMarkers:noteMarkers}):s;});});
+    }
 
     var filtered=useMemo(function(){return sessions.filter(function(s){
       if(activeTab!=="all"&&s.category!==activeTab)return false;
@@ -611,10 +640,12 @@ window.addEventListener('load', function() {
               onEdit:function(s){setModal({category:s.category,session:s});},
               onDelete:function(id){
                 fetch('/api/sessions/'+id,{method:'DELETE'})
-                  .then(function(){setSessions(function(ss){return ss.filter(function(s){return s.id!==id;});});})
+                  .then(function(){return fetch('/api/sessions').then(function(r){return r.json();});})
+                  .then(function(updated){setSessions(updated);})
                   .catch(function(){showToast('Delete failed',false);});
               },
-              onUpdatePhotos:handleUpdatePhotos});
+              onUpdatePhotos:handleUpdatePhotos,
+              onUpdateNoteMarkers:handleUpdateNoteMarkers});
           return null;
         })
       ),

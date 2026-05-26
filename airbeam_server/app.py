@@ -136,7 +136,7 @@ def update_session(sid):
         con.execute("""
             UPDATE sessions SET
               location=?, iv1=?, iv2=?, iv3=?, iv4=?,
-              notes=?, trial=?, note_photos=?,
+              notes=?, trial=?, note_photos=?, note_markers=?,
               pm1=?, pm25=?, pm10=?, temp=?, humidity=?
             WHERE id=?
         """, (
@@ -144,6 +144,7 @@ def update_session(sid):
             s.get("iv3",""), s.get("iv4",""), s.get("notes",""),
             s.get("trial",""),
             json.dumps(s.get("notePhotos",[])),
+            json.dumps(s.get("noteMarkers",[])),
             s.get("pm1"), s.get("pm25"), s.get("pm10"),
             s.get("temp"), s.get("humidity"), sid
         ))
@@ -153,6 +154,7 @@ def update_session(sid):
 def delete_session(sid):
     with get_db() as con:
         con.execute("DELETE FROM sessions WHERE id=?", (sid,))
+        _recalc_trials(con)
     return jsonify({"ok": True})
 
 @app.route("/api/sessions/new", methods=["POST"])
