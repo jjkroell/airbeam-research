@@ -772,8 +772,14 @@ window.addEventListener('load', function() {
 
   // ── Root: switches between Login and Dashboard ─────────────────────────────
   function Root(){
-    var uv=useState(false),unlocked=uv[0],setUnlocked=uv[1];
-    if(!unlocked)return e(Login,{onUnlock:function(){setUnlocked(true);}});
+    var uv=useState(function(){
+      try{return localStorage.getItem('ab_unlocked')==='1';}catch(e){return false;}
+    }),unlocked=uv[0],setUnlocked=uv[1];
+    function unlock(){
+      try{localStorage.setItem('ab_unlocked','1');}catch(e){}
+      setUnlocked(true);
+    }
+    if(!unlocked)return e(Login,{onUnlock:unlock});
     return e(Dashboard,null);
   }
 
