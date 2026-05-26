@@ -5,8 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY app.py .
+COPY templates/ templates/
 
+# Don't copy airbeam.db — it's mounted as a volume from the host
 EXPOSE 5000
 
 CMD ["python", "app.py"]
