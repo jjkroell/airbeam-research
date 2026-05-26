@@ -446,15 +446,18 @@ window.addEventListener('load', function() {
 
   function UploadZone(props){
     var ref=useRef();
-    function go(file){if(!file)return;file.arrayBuffer().then(function(buf){props.onUpload(buf,file.name);});}
+    function goAll(files){
+      if(!files||!files.length)return;
+      props.onUploadAll(Array.from(files));
+    }
     return e('div',{
       onDragOver:function(ev){ev.preventDefault();},
-      onDrop:function(ev){ev.preventDefault();go(ev.dataTransfer.files[0]);},
+      onDrop:function(ev){ev.preventDefault();goAll(ev.dataTransfer.files);},
       onClick:function(){ref.current.click();},
       style:{border:"2px dashed #334155",borderRadius:10,padding:"14px 20px",cursor:"pointer",textAlign:"center",background:"#0f172a",marginBottom:18}},
-      e('input',{ref:ref,type:"file",accept:".xlsx",style:{display:"none"},onChange:function(ev){go(ev.target.files[0]);}}),
+      e('input',{ref:ref,type:"file",accept:".xlsx",multiple:true,style:{display:"none"},onChange:function(ev){goAll(ev.target.files);}}),
       e('div',{style:{fontSize:22,marginBottom:4}},"📂"),
-      e('div',{style:{fontFamily:"monospace",fontSize:13,color:"#64748b"}},props.loading?"Parsing…":"Drop merged_sessions.xlsx here · or click to upload")
+      e('div',{style:{fontFamily:"monospace",fontSize:13,color:"#64748b"}},props.loading?"Parsing…":"Drop .xlsx files here · or click to select (multiple allowed)")
     );
   }
 
@@ -514,11 +517,11 @@ window.addEventListener('load', function() {
 
     function showToast(msg,ok){setToast({msg:msg,ok:ok!==false});setTimeout(function(){setToast(null);},3000);}
     function nextId(){return Math.max.apply(null,[0].concat(sessions.map(function(s){return s.id;})))+1;}
-    function handleUpload(buf,fname){
+    function handleUploadAll(files){
       setLoading(true);
-      setTimeout(function(){
-        try{
-          var parsed=parseFile(buf);
+      Promise.all(files.map(function(f){return f.arrayBuffer().then(function(buf){return parseFile(buf);});}))
+        .then(function(allParsed){
+          var parsed=[].concat.apply([],allParsed);
           setSessions(function(prev){
             var ex=new Set(prev.map(function(s){return s.sheet;}));
             var nw=parsed.filter(function(s){return!ex.has(s.sheet);});
@@ -529,12 +532,17 @@ window.addEventListener('load', function() {
               byCat[cat].sort(function(a,b){return new Date(a.date+"T"+(a.time||"00:00")).getTime()-new Date(b.date+"T"+(b.time||"00:00")).getTime();});
               byCat[cat].forEach(function(s,i){s.trial=i+1;});
             });
-            showToast(nw.length+" session"+(nw.length!==1?"s":"")+" loaded · trials auto-numbered");
+            if(nw.length){
+              fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(nw)})
+                .catch(function(){showToast('Sessions parsed but could not save to server',false);});
+            }
+            var fcount=files.length,scount=nw.length;
+            showToast(scount+" session"+(scount!==1?"s":"")+" loaded from "+fcount+" file"+(fcount!==1?"s":"")+" · trials auto-numbered");
             return merged;
           });
-        }catch(err){showToast("Could not parse file",false);}
-        setLoading(false);
-      },50);
+          setLoading(false);
+        })
+        .catch(function(){showToast("Could not parse file(s)",false);setLoading(false);});
     }
     function handleSave(data){
       if(data.id){
@@ -590,7 +598,7 @@ window.addEventListener('load', function() {
           style:{flexShrink:0,background:"transparent",border:"1px dashed #334155",borderBottom:"none",borderRadius:"7px 7px 0 0",padding:"6px 12px",color:"#475569",fontFamily:"monospace",fontSize:10,marginBottom:-1,marginLeft:4}},"+ New Section")
       ),
       e('div',{style:{padding:"16px 20px",maxWidth:960,margin:"0 auto"}},
-        e(UploadZone,{onUpload:handleUpload,loading:loading}),
+        e(UploadZone,{onUploadAll:handleUploadAll,loading:loading}),
         cats.map(function(cat){
           var cs=filtered.filter(function(s){return s.category===cat;}).sort(function(a,b){return (a.trial||0)-(b.trial||0);});
           if(activeTab!=="all"||cs.length>0||!search)
