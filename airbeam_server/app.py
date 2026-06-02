@@ -130,23 +130,36 @@ def upsert_sessions():
 
 @app.route("/api/sessions/<int:sid>", methods=["PUT"])
 def update_session(sid):
-    """Update a single session's editable fields"""
+    """Update a single session's editable fields — only updates fields that are present in the request"""
     s = request.get_json()
     with get_db() as con:
+        # Fetch existing row first
+        row = con.execute("SELECT * FROM sessions WHERE id=?", (sid,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Not found"}), 404
+        existing = dict(row)
+        # Only update fields that were actually sent
         con.execute("""
             UPDATE sessions SET
               location=?, iv1=?, iv2=?, iv3=?, iv4=?,
-              notes=?, trial=?, note_photos=?, note_markers=?,
+              notes=?, trial=?, note_photos=?,
               pm1=?, pm25=?, pm10=?, temp=?, humidity=?
             WHERE id=?
         """, (
-            s.get("location",""), s.get("iv1",""), s.get("iv2",""),
-            s.get("iv3",""), s.get("iv4",""), s.get("notes",""),
-            s.get("trial",""),
-            json.dumps(s.get("notePhotos",[])),
-            json.dumps(s.get("noteMarkers",[])),
-            s.get("pm1"), s.get("pm25"), s.get("pm10"),
-            s.get("temp"), s.get("humidity"), sid
+            s.get("location", existing.get("location","")),
+            s.get("iv1",     existing.get("iv1","")),
+            s.get("iv2",     existing.get("iv2","")),
+            s.get("iv3",     existing.get("iv3","")),
+            s.get("iv4",     existing.get("iv4","")),
+            s.get("notes",   existing.get("notes","")),
+            s.get("trial",   existing.get("trial","")),
+            json.dumps(s.get("notePhotos", json.loads(existing.get("note_photos","[]") or "[]"))),
+            s.get("pm1",     existing.get("pm1")),
+            s.get("pm25",    existing.get("pm25")),
+            s.get("pm10",    existing.get("pm10")),
+            s.get("temp",    existing.get("temp")),
+            s.get("humidity",existing.get("humidity")),
+            sid
         ))
     return jsonify({"ok": True})
 
@@ -154,7 +167,6 @@ def update_session(sid):
 def delete_session(sid):
     with get_db() as con:
         con.execute("DELETE FROM sessions WHERE id=?", (sid,))
-        _recalc_trials(con)
     return jsonify({"ok": True})
 
 @app.route("/api/sessions/new", methods=["POST"])
