@@ -415,7 +415,7 @@ window.addEventListener('load', function() {
             props.sessions.length+" session"+(props.sessions.length!==1?"s":""),
             ap?e('span',{style:{color:getBandColor(+ap,"pm25")}}," · avg PM2.5: "+ap+" µg/m³"):null)
         ),
-        e('button',{onClick:function(ev){ev.stopPropagation();props.onAdd(props.category);},
+        props.viewOnly?null:e('button',{onClick:function(ev){ev.stopPropagation();props.onAdd(props.category);},
           style:{background:"#fff3",border:"1px solid "+meta.text+"40",borderRadius:6,padding:"4px 10px",color:meta.text,fontSize:12,fontWeight:700,marginRight:6}},"+ Add"),
         e('span',{style:{color:meta.text,fontSize:14}},collapsed?"▼":"▲")
       ),
