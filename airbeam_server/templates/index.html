@@ -288,18 +288,18 @@ window.addEventListener('load', function() {
       });
     }
     return e('div',{style:{marginTop:10}},
-      e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:6}},"PHOTOS"),
+      (props.viewOnly&&(!props.photos||!props.photos.length))?null:e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:6}},"PHOTOS"),
       e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}},
         (props.photos||[]).map(function(p,i){
           return e('div',{key:i,style:{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #334155"}},
             e('img',{src:p.src,style:{width:80,height:80,objectFit:"cover",display:"block"}}),
-            e('button',{onClick:function(){props.onRemove(i);},
+            props.viewOnly?null:e('button',{onClick:function(){props.onRemove(i);},
               style:{position:"absolute",top:2,right:2,background:"#000a",border:"none",borderRadius:"50%",width:18,height:18,color:"#fff",fontSize:10,lineHeight:"18px",padding:0}},"✕")
           );
         }),
-        e('div',{onClick:function(){ref.current.click();},
+        props.viewOnly?null:e('div',{onClick:function(){ref.current.click();},
           style:{width:80,height:80,borderRadius:8,border:"2px dashed #334155",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#475569",fontSize:24,flexShrink:0}},"+"),
-        e('input',{ref:ref,type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:handleFiles})
+        props.viewOnly?null:e('input',{ref:ref,type:"file",accept:"image/*",multiple:true,style:{display:"none"},onChange:handleFiles})
       )
     );
   }
@@ -340,7 +340,7 @@ window.addEventListener('load', function() {
             e('span',{style:{color:"#64748b"}},lbl+": "),e('span',{style:{color:"#e2e8f0"}},val));
         }),
         sess.notes?e('div',{style:{background:"#0f172a",borderRadius:8,padding:"10px 12px",fontSize:13,color:"#94a3b8",lineHeight:1.5,borderLeft:"3px solid "+meta.hex,marginTop:6,marginBottom:6}},sess.notes):null,
-        props.viewOnly?null:e(PhotoStrip,{photos:sess.notePhotos||[],
+        e(PhotoStrip,{photos:sess.notePhotos||[],viewOnly:props.viewOnly,
           onAdd:function(p){props.onUpdatePhotos(sess.id,(sess.notePhotos||[]).concat([p]));},
           onRemove:function(i){props.onUpdatePhotos(sess.id,(sess.notePhotos||[]).filter(function(_,j){return j!==i;}));}}),
         e('div',{style:{display:"flex",gap:8,marginTop:10}},
