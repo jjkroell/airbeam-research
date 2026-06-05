@@ -89,6 +89,10 @@ def migrate_db():
             con.execute("ALTER TABLE sessions ADD COLUMN qa_thread TEXT DEFAULT '[]'")
         except:
             pass
+        try:
+            con.execute("ALTER TABLE sessions ADD COLUMN uploaded_by TEXT DEFAULT ''")
+        except:
+            pass
         # Seed default users if table is empty
         count = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
         if count == 0:
@@ -118,6 +122,7 @@ def get_sessions():
         s["gpsPath"]      = json.loads(s.pop("gps_path",     "[]") or "[]")
         s["qaThread"]     = json.loads(s.pop("qa_thread",    "[]") or "[]")
         s["maxPm25"]      = s.pop("max_pm25", None)
+        s["uploadedBy"]   = s.pop("uploaded_by", "") or ""
         sessions.append(s)
     return jsonify(sessions)
 
@@ -131,8 +136,8 @@ def upsert_sessions():
             con.execute("""
                 INSERT INTO sessions
                   (sheet,category,name,date,time,trial,location,iv1,iv2,iv3,iv4,
-                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,gps_path,qa_thread)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,gps_path,qa_thread,uploaded_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(sheet) DO UPDATE SET
                   time_series=excluded.time_series,
                   note_markers=excluded.note_markers,
@@ -161,7 +166,8 @@ def upsert_sessions():
                 json.dumps(s.get("noteMarkers",[])),
                 json.dumps(s.get("notePhotos",[])),
                 json.dumps(s.get("gpsPath",[])),
-                json.dumps(s.get("qaThread",[]))
+                json.dumps(s.get("qaThread",[])),
+                s.get("uploadedBy","")
             ))
         # Recalculate trial numbers after bulk insert
         _recalc_trials(con)
@@ -218,8 +224,8 @@ def add_session():
         cur = con.execute("""
             INSERT INTO sessions
               (sheet,category,name,date,time,trial,location,iv1,iv2,iv3,iv4,
-               pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,uploaded_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             s.get("sheet", "manual_"+str(os.urandom(4).hex())),
             s.get("category"), s.get("name",""),
@@ -229,7 +235,8 @@ def add_session():
             s.get("pm1"), s.get("pm25"), s.get("pm10"),
             s.get("temp"), s.get("humidity"), s.get("notes",""),
             s.get("maxPm25"),
-            json.dumps([]), json.dumps([]), json.dumps([])
+            json.dumps([]), json.dumps([]), json.dumps([]),
+            s.get("uploadedBy","")
         ))
         new_id = cur.lastrowid
         _recalc_trials(con)
@@ -310,7 +317,7 @@ def create_user():
     role = u.get("role", "viewer")
     if not display_name or not pin:
         return jsonify({"ok": False, "error": "Name and PIN are required"}), 400
-    if role not in ("viewer", "teamlead"):
+    if role not in ("viewer", "teamlead", "researcher"):
         return jsonify({"ok": False, "error": "Invalid role"}), 400
     if pin == ADMIN_PIN:
         return jsonify({"ok": False, "error": "PIN already in use"}), 409
@@ -337,13 +344,16 @@ def update_user(uid):
         new_pin = (u.get("pin") or existing["pin"]).strip()
         if new_pin == ADMIN_PIN:
             return jsonify({"ok": False, "error": "PIN already in use"}), 409
+        new_role = u.get("role", existing["role"])
+        if new_role not in ("viewer", "teamlead", "researcher"):
+            return jsonify({"ok": False, "error": "Invalid role"}), 400
         try:
             con.execute(
                 "UPDATE users SET display_name=?, pin=?, role=? WHERE id=?",
                 (
                     (u.get("displayName") or existing["display_name"]).strip(),
                     new_pin,
-                    u.get("role", existing["role"]),
+                    new_role,
                     uid
                 )
             )

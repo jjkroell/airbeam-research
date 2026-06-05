@@ -61,6 +61,15 @@ window.addEventListener('load', function() {
   var BAND_COLORS=["#00c896","#f5c518","#f97316","#e63946","#c026d3"];
   var BAND_LABELS=["Good","Moderate","Sensitive","Unhealthy","Very Unhealthy"];
 
+  function getInitials(name){
+    var parts=(name||'').trim().split(/\s+/);
+    return parts.length>=2?(parts[0][0]+parts[parts.length-1][0]).toUpperCase():(name||'').slice(0,2).toUpperCase();
+  }
+  function nameColor(name){
+    var h=(name||'').split('').reduce(function(a,c){return((a<<5)-a)+c.charCodeAt(0)|0;},0);
+    return 'hsl('+(Math.abs(h)%360)+',60%,52%)';
+  }
+
   function getBandColor(v,metric){
     var b=PM_BANDS[metric];if(!b||v==null)return"#94a3b8";
     for(var i=0;i<b.thresholds.length;i++)if(v<=b.thresholds[i])return BAND_COLORS[i];
@@ -586,7 +595,7 @@ window.addEventListener('load', function() {
 
   function QAThread(props){
     var thread=props.thread||[];
-    var canPost=props.role==='admin'||props.role==='teamlead';
+    var canPost=props.role==='admin'||props.role==='teamlead'||props.role==='researcher';
     var iv=useState(""),input=iv[0],setInput=iv[1];
     function post(){
       var text=input.trim();if(!text)return;
@@ -721,6 +730,7 @@ window.addEventListener('load', function() {
         style:{display:"flex",alignItems:"center",gap:8,padding:"11px 14px",cursor:"pointer",userSelect:"none"}},
         e('div',{style:{width:8,height:8,borderRadius:"50%",background:pc,flexShrink:0,boxShadow:"0 0 5px "+pc}}),
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#94a3b8",minWidth:58}},"Trial "+(sess.trial||"—")),
+        sess.uploadedBy?e('div',{title:sess.uploadedBy,style:{width:20,height:20,borderRadius:"50%",background:nameColor(sess.uploadedBy),display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:"#fff",flexShrink:0,letterSpacing:0,cursor:"default"}},getInitials(sess.uploadedBy)):null,
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#64748b",minWidth:84}}),sess.date,
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#64748b",minWidth:42}}),sess.time,
         e('div',{style:{flex:1,fontSize:13,color:"#cbd5e1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},sess.location||sess.name||"—"),
@@ -941,7 +951,7 @@ window.addEventListener('load', function() {
     var ev=useState(null),err=ev[0],setErr=ev[1];
     var nv=useState({displayName:'',pin:'',role:'viewer'}),newUser=nv[0],setNewUser=nv[1];
     var sv=useState(false),saving=sv[0],setSaving=sv[1];
-    var ROLE_COLORS={viewer:{bg:"#1e40af",text:"#93c5fd",label:"VIEWER"},teamlead:{bg:"#4a1d96",text:"#c4b5fd",label:"TEAM LEAD"}};
+    var ROLE_COLORS={viewer:{bg:"#1e40af",text:"#93c5fd",label:"VIEWER"},teamlead:{bg:"#4a1d96",text:"#c4b5fd",label:"TEAM LEAD"},researcher:{bg:"#065f46",text:"#6ee7b7",label:"RESEARCHER"}};
     function loadUsers(){
       setLoading(true);
       fetch('/api/users',{headers:{'X-Admin-Pin':CORRECT_PIN}})
@@ -1014,7 +1024,8 @@ window.addEventListener('load', function() {
                 e('select',{value:newUser.role,onChange:function(ev){setNewUser(function(u){return Object.assign({},u,{role:ev.target.value});});},
                   style:inp},
                   e('option',{value:"viewer"},"Viewer — read only"),
-                  e('option',{value:"teamlead"},"Team Lead — can post Q&A")
+                  e('option',{value:"teamlead"},"Team Lead — can post Q&A"),
+                  e('option',{value:"researcher"},"Researcher — full access, no user management")
                 )
               ),
               err?e('div',{style:{fontSize:12,color:"#ef4444",fontFamily:"monospace",marginBottom:8}},err):null,
@@ -1111,7 +1122,7 @@ window.addEventListener('load', function() {
         var allParsed=[].concat.apply([],results.filter(Boolean));
         setSessions(function(prev){
           var ex=new Set(prev.map(function(s){return s.sheet;}));
-          var nw=allParsed.filter(function(s){return!ex.has(s.sheet);});
+          var nw=allParsed.filter(function(s){return!ex.has(s.sheet);}).map(function(s){return Object.assign({},s,{uploadedBy:displayName});});
           var merged=prev.concat(nw);
           var byCat={};
           merged.forEach(function(s){if(!byCat[s.category])byCat[s.category]=[];byCat[s.category].push(s);});
@@ -1136,9 +1147,10 @@ window.addEventListener('load', function() {
           .then(function(){setSessions(function(ss){return ss.map(function(s){return s.id===data.id?Object.assign({},s,data):s;});});})
           .catch(function(){showToast('Save failed',false);});
       } else {
-        fetch('/api/sessions/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+        var dataWithUploader=Object.assign({},data,{uploadedBy:data.uploadedBy||displayName});
+        fetch('/api/sessions/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataWithUploader)})
           .then(function(r){return r.json();})
-          .then(function(res){setSessions(function(ss){return ss.concat([Object.assign({},data,{id:res.id,timeSeries:[],noteMarkers:[],notePhotos:[]})]);});})
+          .then(function(res){setSessions(function(ss){return ss.concat([Object.assign({},dataWithUploader,{id:res.id,timeSeries:[],noteMarkers:[],notePhotos:[]})]);});})
           .catch(function(){showToast('Save failed',false);});
       }
       setModal(null);
@@ -1174,7 +1186,8 @@ window.addEventListener('load', function() {
         e('div',null,
           e('div',{style:{fontWeight:700,fontSize:16,color:"#f1f5f9",fontFamily:"monospace"}},"AirBeam Research",
             role==='viewer'?e('span',{style:{marginLeft:8,background:"#1e40af",color:"#93c5fd",borderRadius:6,padding:"2px 8px",fontSize:10,fontFamily:"monospace"}},"VIEW ONLY"):
-            role==='teamlead'?e('span',{style:{marginLeft:8,background:"#4a1d96",color:"#c4b5fd",borderRadius:6,padding:"2px 8px",fontSize:10,fontFamily:"monospace"}},"TEAM LEAD"):null),
+            role==='teamlead'?e('span',{style:{marginLeft:8,background:"#4a1d96",color:"#c4b5fd",borderRadius:6,padding:"2px 8px",fontSize:10,fontFamily:"monospace"}},"TEAM LEAD"):
+            role==='researcher'?e('span',{style:{marginLeft:8,background:"#065f46",color:"#6ee7b7",borderRadius:6,padding:"2px 8px",fontSize:10,fontFamily:"monospace"}},"RESEARCHER"):null),
           e('div',{style:{fontSize:11,color:"#475569",fontFamily:"monospace"}},sessions.length+" sessions · avg PM2.5 "+avgAll+" µg/m³")
         ),
         e('div',{style:{flex:1}}),
@@ -1400,7 +1413,7 @@ window.addEventListener('load', function() {
     if(!auth)return e(Login,{onUnlock:unlock});
     var role=auth.role||'viewer';
     var displayName=auth.displayName||'';
-    return e(Dashboard,{viewOnly:role!=='admin',role:role,displayName:displayName,userKey:role,onLogout:logout});
+    return e(Dashboard,{viewOnly:role!=='admin'&&role!=='researcher',role:role,displayName:displayName,userKey:role,onLogout:logout});
   }
 
   RD.createRoot(document.getElementById("root")).render(e(Root,null));
