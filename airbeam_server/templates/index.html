@@ -207,16 +207,13 @@ window.addEventListener('load', function() {
       return function(){if(mapRef.current){try{mapRef.current.remove();}catch(e){}mapRef.current=null;}};
     },[gpsPath]);
     if(!pts.length)return null;
-    return e('div',{style:{marginBottom:14}},
-      e('div',{style:{fontSize:11,color:"#94a3b8",fontFamily:"monospace",marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        "GPS TRACK",
-        e('span',{style:{fontSize:10,color:"#475569",fontStyle:"italic"}},"click to expand")
-      ),
-      e('div',{onClick:function(){setMapOpen(true);},style:{position:"relative",height:130,borderRadius:10,overflow:"hidden",border:"1px solid #334155",cursor:"pointer"}},
+    return e(R.Fragment,null,
+      e('div',{onClick:function(){setMapOpen(true);},title:"Click to expand GPS track",
+        style:{width:80,height:80,borderRadius:8,overflow:"hidden",border:"1px solid #334155",cursor:"pointer",position:"relative",flexShrink:0}},
         e('div',{ref:ref,style:{position:"absolute",inset:0}}),
         e('div',{style:{position:"absolute",inset:0,zIndex:10}})
       ),
-      mapOpen?e(MapModal,{gpsPath:gpsPath,onClose:function(){setMapOpen(false);}}):null
+      mapOpen?RD.createPortal(e(MapModal,{gpsPath:gpsPath,onClose:function(){setMapOpen(false);}}),document.body):null
     );
   }
 
@@ -411,8 +408,9 @@ window.addEventListener('load', function() {
       });
     }
     return e('div',{style:{marginTop:10}},
-      (props.viewOnly&&(!props.photos||!props.photos.length))?null:e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:6}},"PHOTOS"),
+      (props.viewOnly&&(!props.photos||!props.photos.length)&&!props.mapNode)?null:e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:6}},"PHOTOS"),
       e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-start"}},
+        props.mapNode||null,
         (props.photos||[]).map(function(p,i){
           return e('div',{key:i,style:{position:"relative",borderRadius:8,overflow:"hidden",border:"1px solid #334155"}},
             e('img',{src:p.src,style:{width:80,height:80,objectFit:"cover",display:"block"}}),
@@ -447,8 +445,7 @@ window.addEventListener('load', function() {
         e('span',{style:{color:"#475569",marginLeft:8}},expanded?"▲":"▼")
       ),
       expanded?e('div',{style:{padding:"0 14px 14px",borderTop:"1px solid #334155"}},
-        e('div',{style:{marginTop:12}},e(MiniMap,{gpsPath:sess.gpsPath})),
-        e('div',{style:{marginTop:sess.gpsPath&&sess.gpsPath.length?0:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric})),
+        e('div',{style:{marginTop:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric})),
         e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}},
           e(StatBadge,{label:"PM1",value:sess.pm1,unit:"µg/m³",metric:"pm1"}),
           e(StatBadge,{label:"PM2.5 avg",value:sess.pm25,unit:"µg/m³",metric:"pm25"}),
@@ -465,6 +462,7 @@ window.addEventListener('load', function() {
         }),
         sess.notes?e('div',{style:{background:"#0f172a",borderRadius:8,padding:"10px 12px",fontSize:13,color:"#94a3b8",lineHeight:1.5,borderLeft:"3px solid "+meta.hex,marginTop:6,marginBottom:6}},sess.notes):null,
         e(PhotoStrip,{photos:sess.notePhotos||[],viewOnly:props.viewOnly,
+          mapNode:sess.gpsPath&&sess.gpsPath.length?e(MiniMap,{gpsPath:sess.gpsPath}):null,
           onAdd:function(p){props.onUpdatePhotos(sess.id,(sess.notePhotos||[]).concat([p]));},
           onRemove:function(i){props.onUpdatePhotos(sess.id,(sess.notePhotos||[]).filter(function(_,j){return j!==i;}));}}),
         e('div',{style:{display:"flex",gap:8,marginTop:10}},
