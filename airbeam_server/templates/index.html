@@ -604,7 +604,7 @@ window.addEventListener('load', function() {
           var d=new Date(msg.ts),ds=isNaN(d)?'':d.toLocaleDateString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
           return e('div',{key:i,style:{background:isAdmin?"#0c1f3a":"#160d2b",border:"1px solid "+(isAdmin?"#1e3a6e":"#3b1d8a"),borderRadius:8,padding:"8px 12px"}},
             e('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
-              e('span',{style:{fontFamily:"monospace",fontSize:10,color:isAdmin?"#60a5fa":"#a78bfa",fontWeight:700}},isAdmin?"Sasha":"Team Lead"),
+              e('span',{style:{fontFamily:"monospace",fontSize:10,color:isAdmin?"#60a5fa":"#a78bfa",fontWeight:700}},isAdmin?"Sasha":"Christine"),
               e('span',{style:{fontFamily:"monospace",fontSize:9,color:"#475569"}},ds)
             ),
             e('div',{style:{fontSize:13,color:"#e2e8f0",lineHeight:1.5}},msg.text)
