@@ -15,6 +15,10 @@ app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
 DB = os.path.join(os.path.dirname(__file__), "airbeam.db")
+ADMIN_PIN = os.environ.get("ADMIN_PIN", "airbeam2026")
+
+def _is_admin():
+    return request.headers.get("X-Admin-Pin", "") == ADMIN_PIN
 
 # ── Database setup ────────────────────────────────────────────────────────────
 def get_db():
@@ -62,6 +66,13 @@ def init_db():
             text_color TEXT,
             icon TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            display_name TEXT NOT NULL,
+            pin          TEXT UNIQUE NOT NULL,
+            role         TEXT NOT NULL DEFAULT 'viewer'
+        );
         """)
     print("Database ready:", DB)
 
@@ -78,6 +89,14 @@ def migrate_db():
             con.execute("ALTER TABLE sessions ADD COLUMN qa_thread TEXT DEFAULT '[]'")
         except:
             pass
+        # Seed default users if table is empty
+        count = con.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if count == 0:
+            con.executemany(
+                "INSERT OR IGNORE INTO users (display_name, pin, role) VALUES (?,?,?)",
+                [("Christine", "xS0p1z6SSJ", "teamlead"),
+                 ("Viewer", "airbeam-view", "viewer")]
+            )
 migrate_db()
 
 # ── Static files ──────────────────────────────────────────────────────────────
@@ -261,6 +280,84 @@ def _recalc_trials(con):
         ss.sort(key=lambda s: (s["date"] or "", s["time"] or ""))
         for i, s in enumerate(ss):
             con.execute("UPDATE sessions SET trial=? WHERE id=?", (i+1, s["id"]))
+
+# ── Auth API ──────────────────────────────────────────────────────────────────
+@app.route("/api/auth", methods=["POST"])
+def auth():
+    pin = request.get_json().get("pin", "")
+    with get_db() as con:
+        row = con.execute("SELECT * FROM users WHERE pin=?", (pin,)).fetchone()
+    if not row:
+        return jsonify({"ok": False}), 401
+    return jsonify({"ok": True, "role": row["role"], "displayName": row["display_name"]})
+
+# ── Users API ─────────────────────────────────────────────────────────────────
+@app.route("/api/users", methods=["GET"])
+def get_users():
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+    with get_db() as con:
+        rows = con.execute("SELECT id, display_name, pin, role FROM users ORDER BY id").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/users", methods=["POST"])
+def create_user():
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+    u = request.get_json()
+    display_name = (u.get("displayName") or "").strip()
+    pin = (u.get("pin") or "").strip()
+    role = u.get("role", "viewer")
+    if not display_name or not pin:
+        return jsonify({"ok": False, "error": "Name and PIN are required"}), 400
+    if role not in ("viewer", "teamlead"):
+        return jsonify({"ok": False, "error": "Invalid role"}), 400
+    if pin == ADMIN_PIN:
+        return jsonify({"ok": False, "error": "PIN already in use"}), 409
+    try:
+        with get_db() as con:
+            cur = con.execute(
+                "INSERT INTO users (display_name, pin, role) VALUES (?,?,?)",
+                (display_name, pin, role)
+            )
+        return jsonify({"ok": True, "id": cur.lastrowid})
+    except sqlite3.IntegrityError:
+        return jsonify({"ok": False, "error": "PIN already in use"}), 409
+
+@app.route("/api/users/<int:uid>", methods=["PUT"])
+def update_user(uid):
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+    u = request.get_json()
+    with get_db() as con:
+        row = con.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Not found"}), 404
+        existing = dict(row)
+        new_pin = (u.get("pin") or existing["pin"]).strip()
+        if new_pin == ADMIN_PIN:
+            return jsonify({"ok": False, "error": "PIN already in use"}), 409
+        try:
+            con.execute(
+                "UPDATE users SET display_name=?, pin=?, role=? WHERE id=?",
+                (
+                    (u.get("displayName") or existing["display_name"]).strip(),
+                    new_pin,
+                    u.get("role", existing["role"]),
+                    uid
+                )
+            )
+        except sqlite3.IntegrityError:
+            return jsonify({"ok": False, "error": "PIN already in use"}), 409
+    return jsonify({"ok": True})
+
+@app.route("/api/users/<int:uid>", methods=["DELETE"])
+def delete_user(uid):
+    if not _is_admin():
+        return jsonify({"error": "Unauthorized"}), 403
+    with get_db() as con:
+        con.execute("DELETE FROM users WHERE id=?", (uid,))
+    return jsonify({"ok": True})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

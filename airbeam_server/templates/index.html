@@ -34,7 +34,7 @@ window.addEventListener('load', function() {
   var e=R.createElement;
   var useState=R.useState, useMemo=R.useMemo, useRef=R.useRef, useEffect=R.useEffect;
 
-  var CORRECT_PIN="airbeam2026";var VIEWER_PIN="airbeam-view";var TEAMLEAD_PIN="xS0p1z6SSJ";
+  var CORRECT_PIN="airbeam2026";
   var CATEGORY_META={
     "Bus Stops":          {hex:"#FFC000",text:"#5a3e00",icon:"🚏",ivLabels:["Distance from road","Position vs. Shelter","Traffic","Highway?"],locationHint:"City, Bus Stop",notesHint:"Traffic, Wind, Events..."},
     "Riding Bus":         {hex:"#92D050",text:"#2a4a00",icon:"🚌",ivLabels:["# of people","Position","Windows"],locationHint:"City / Route",notesHint:"Door openings, Events..."},
@@ -590,7 +590,7 @@ window.addEventListener('load', function() {
     var iv=useState(""),input=iv[0],setInput=iv[1];
     function post(){
       var text=input.trim();if(!text)return;
-      var entry={role:props.role,text:text,ts:new Date().toISOString()};
+      var entry={role:props.role,displayName:props.displayName||'',text:text,ts:new Date().toISOString()};
       props.onPost(props.sessionId,thread.concat([entry]));
       setInput("");
     }
@@ -601,10 +601,11 @@ window.addEventListener('load', function() {
       e('div',{style:{display:"flex",flexDirection:"column",gap:6,marginBottom:10}},
         thread.map(function(msg,i){
           var isAdmin=msg.role==='admin';
+          var name=msg.displayName||(isAdmin?'Sasha':msg.role==='teamlead'?'Christine':'User');
           var d=new Date(msg.ts),ds=isNaN(d)?'':d.toLocaleDateString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
           return e('div',{key:i,style:{background:isAdmin?"#0c1f3a":"#160d2b",border:"1px solid "+(isAdmin?"#1e3a6e":"#3b1d8a"),borderRadius:8,padding:"8px 12px"}},
             e('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}},
-              e('span',{style:{fontFamily:"monospace",fontSize:10,color:isAdmin?"#60a5fa":"#a78bfa",fontWeight:700}},isAdmin?"Sasha":"Christine"),
+              e('span',{style:{fontFamily:"monospace",fontSize:10,color:isAdmin?"#60a5fa":"#a78bfa",fontWeight:700}},name),
               e('span',{style:{fontFamily:"monospace",fontSize:9,color:"#475569"}},ds)
             ),
             e('div',{style:{fontSize:13,color:"#e2e8f0",lineHeight:1.5}},msg.text)
@@ -631,7 +632,7 @@ window.addEventListener('load', function() {
             e('button',{onClick:props.onClose,style:{background:"none",border:"none",color:"#64748b",fontSize:20,cursor:"pointer",lineHeight:1}},"✕")
           ),
           e('div',{style:{flex:1,overflowY:"auto",padding:"14px 16px"}},
-            e(QAThread,{thread:props.thread,role:props.role,sessionId:props.sessionId,onPost:props.onPost})
+            e(QAThread,{thread:props.thread,role:props.role,displayName:props.displayName,sessionId:props.sessionId,onPost:props.onPost})
           )
         )
       ),
@@ -752,7 +753,7 @@ window.addEventListener('load', function() {
             )
           )
         ),
-        qaOpen?e(QAModal,{thread:qaThread,role:props.role,sessionId:sess.id,trial:sess.trial,onPost:props.onUpdateQA,onClose:function(){setQaOpen(false);try{localStorage.setItem(qaSeenKey,String(qaThread.length));}catch(e){}}}):null,
+        qaOpen?e(QAModal,{thread:qaThread,role:props.role,displayName:props.displayName,sessionId:sess.id,trial:sess.trial,onPost:props.onUpdateQA,onClose:function(){setQaOpen(false);try{localStorage.setItem(qaSeenKey,String(qaThread.length));}catch(e){}}}):null,
         mapBadgeOpen?RD.createPortal(e(MapModal,{gpsPath:sess.gpsPath,noteMarkers:sess.noteMarkers,sessionId:sess.id,viewOnly:props.viewOnly,onUpdateNotes:props.onUpdateNotes,onClose:function(){setMapBadgeOpen(false);}}),document.body):null,
         meta.ivLabels.map(function(lbl,i){
           var val=[sess.iv1,sess.iv2,sess.iv3,sess.iv4][i];
@@ -906,7 +907,7 @@ window.addEventListener('load', function() {
         e('div',{style:{padding:"12px 16px"}},
           props.sessions.length===0?e('div',{style:{textAlign:"center",padding:"24px 0",color:"#334155",fontFamily:"monospace",fontSize:12}},"No sessions yet — upload xlsx files or click + Add"):
           props.sessions.map(function(sess){
-            return e(SessionRow,{key:sess.id,s:sess,meta:meta,viewOnly:props.viewOnly,role:props.role,customScales:catScales,onUpdateCategoryScales:updateCategoryScales,onEdit:props.onEdit,onDelete:props.onDelete,onUpdatePhotos:props.onUpdatePhotos,onUpdateNotes:props.onUpdateNotes,onUpdateQA:props.onUpdateQA});
+            return e(SessionRow,{key:sess.id,s:sess,meta:meta,viewOnly:props.viewOnly,role:props.role,displayName:props.displayName,customScales:catScales,onUpdateCategoryScales:updateCategoryScales,onEdit:props.onEdit,onDelete:props.onDelete,onUpdatePhotos:props.onUpdatePhotos,onUpdateNotes:props.onUpdateNotes,onUpdateQA:props.onUpdateQA});
           })
         )
       ):null,
@@ -933,16 +934,120 @@ window.addEventListener('load', function() {
     );
   }
 
+  // ── User Management Modal (admin only) ────────────────────────────────────
+  function UserManageModal(props){
+    var uv=useState([]),users=uv[0],setUsers=uv[1];
+    var lv=useState(true),loading=lv[0],setLoading=lv[1];
+    var ev=useState(null),err=ev[0],setErr=ev[1];
+    var nv=useState({displayName:'',pin:'',role:'viewer'}),newUser=nv[0],setNewUser=nv[1];
+    var sv=useState(false),saving=sv[0],setSaving=sv[1];
+    var ROLE_COLORS={viewer:{bg:"#1e40af",text:"#93c5fd",label:"VIEWER"},teamlead:{bg:"#4a1d96",text:"#c4b5fd",label:"TEAM LEAD"}};
+    function loadUsers(){
+      setLoading(true);
+      fetch('/api/users',{headers:{'X-Admin-Pin':CORRECT_PIN}})
+        .then(function(r){return r.json();})
+        .then(function(data){setUsers(data);setLoading(false);})
+        .catch(function(){setErr('Failed to load users');setLoading(false);});
+    }
+    useEffect(loadUsers,[]);
+    function setField(k,v){setNewUser(function(u){return Object.assign({},u);var o=Object.assign({},u);o[k]=v;return o;});}
+    function addUser(){
+      if(!newUser.displayName.trim()||!newUser.pin.trim()){setErr('Name and PIN are required');return;}
+      setSaving(true);setErr(null);
+      fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json','X-Admin-Pin':CORRECT_PIN},body:JSON.stringify(newUser)})
+        .then(function(r){return r.json();})
+        .then(function(data){
+          setSaving(false);
+          if(data.ok){loadUsers();setNewUser({displayName:'',pin:'',role:'viewer'});}
+          else{setErr(data.error||'Failed to create user');}
+        })
+        .catch(function(){setSaving(false);setErr('Network error');});
+    }
+    function deleteUser(id){
+      if(!confirm('Delete this user?'))return;
+      fetch('/api/users/'+id,{method:'DELETE',headers:{'X-Admin-Pin':CORRECT_PIN}})
+        .then(function(){setUsers(function(u){return u.filter(function(x){return x.id!==id;});});})
+        .catch(function(){setErr('Delete failed');});
+    }
+    var inp={background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"8px 10px",color:"#e2e8f0",fontSize:13,width:"100%",boxSizing:"border-box"};
+    var lbl={fontSize:11,color:"#64748b",fontFamily:"monospace",display:"block",marginBottom:3};
+    return RD.createPortal(
+      e('div',{style:{position:"fixed",inset:0,background:"#000c",zIndex:1004,display:"flex",alignItems:"center",justifyContent:"center",padding:16},
+        onClick:function(ev){if(ev.target===ev.currentTarget)props.onClose();}},
+        e('div',{style:{background:"#0f172a",borderRadius:16,width:"100%",maxWidth:480,border:"1px solid #334155",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden"}},
+          e('div',{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",borderBottom:"1px solid #1e293b",flexShrink:0}},
+            e('div',{style:{fontFamily:"monospace",fontSize:14,fontWeight:700,color:"#f1f5f9"}},"👥 Manage Users"),
+            e('button',{onClick:props.onClose,style:{background:"none",border:"none",color:"#64748b",fontSize:20,cursor:"pointer",lineHeight:1}},"✕")
+          ),
+          e('div',{style:{flex:1,overflowY:"auto",padding:"16px 18px"}},
+            loading?e('div',{style:{textAlign:"center",color:"#475569",fontFamily:"monospace",fontSize:13,padding:20}},"Loading…"):null,
+            !loading&&users.length?e('div',{style:{marginBottom:20}},
+              e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:8}},"CURRENT USERS"),
+              users.map(function(u){
+                var rc=ROLE_COLORS[u.role]||ROLE_COLORS.viewer;
+                return e('div',{key:u.id,style:{display:"flex",alignItems:"center",gap:10,background:"#1e293b",borderRadius:8,padding:"10px 12px",marginBottom:6}},
+                  e('div',{style:{flex:1}},
+                    e('div',{style:{fontSize:13,color:"#e2e8f0",fontWeight:500}},u.display_name),
+                    e('div',{style:{fontSize:11,fontFamily:"monospace",color:"#64748b",marginTop:2}},"PIN: "+u.pin)
+                  ),
+                  e('span',{style:{background:rc.bg,color:rc.text,borderRadius:6,padding:"2px 8px",fontSize:10,fontFamily:"monospace",flexShrink:0}},rc.label),
+                  e('button',{onClick:function(){deleteUser(u.id);},
+                    style:{background:"#450a0a",border:"1px solid #7f1d1d",borderRadius:6,padding:"4px 10px",color:"#fca5a5",fontSize:11,cursor:"pointer",flexShrink:0}},"Delete")
+                );
+              })
+            ):null,
+            !loading&&!users.length?e('div',{style:{color:"#475569",fontFamily:"monospace",fontSize:12,marginBottom:16}},"No users yet."):null,
+            e('div',{style:{background:"#0a0f1a",borderRadius:10,padding:"14px",border:"1px solid #1e293b"}},
+              e('div',{style:{fontSize:11,color:"#64748b",fontFamily:"monospace",marginBottom:10}},"ADD NEW USER"),
+              e('div',{style:{marginBottom:8}},
+                e('label',{style:lbl},"Display Name"),
+                e('input',{value:newUser.displayName,onChange:function(ev){setErr(null);setNewUser(function(u){return Object.assign({},u,{displayName:ev.target.value});});},
+                  placeholder:"e.g. Jessica",style:inp})
+              ),
+              e('div',{style:{marginBottom:8}},
+                e('label',{style:lbl},"PIN / Password"),
+                e('input',{value:newUser.pin,onChange:function(ev){setErr(null);setNewUser(function(u){return Object.assign({},u,{pin:ev.target.value});});},
+                  placeholder:"Choose a password",style:inp})
+              ),
+              e('div',{style:{marginBottom:12}},
+                e('label',{style:lbl},"Role"),
+                e('select',{value:newUser.role,onChange:function(ev){setNewUser(function(u){return Object.assign({},u,{role:ev.target.value});});},
+                  style:inp},
+                  e('option',{value:"viewer"},"Viewer — read only"),
+                  e('option',{value:"teamlead"},"Team Lead — can post Q&A")
+                )
+              ),
+              err?e('div',{style:{fontSize:12,color:"#ef4444",fontFamily:"monospace",marginBottom:8}},err):null,
+              e('button',{onClick:addUser,disabled:saving,
+                style:{background:"#3b82f6",border:"none",borderRadius:8,padding:"9px 18px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",width:"100%",opacity:saving?0.6:1}},
+                saving?"Adding…":"Add User")
+            )
+          )
+        )
+      ),
+      document.body
+    );
+  }
+
   // ── Login (separate component, no shared state with Dashboard) ─────────────
   function Login(props){
     var iv=useState(""),input=iv[0],setInput=iv[1];
     var er=useState(false),error=er[0],setError=er[1];
     var sh=useState(false),shake=sh[0],setShake=sh[1];
+    var ldv=useState(false),loading=ldv[0],setLoading=ldv[1];
+    function fail(){setError(true);setShake(true);setInput("");setTimeout(function(){setShake(false);},500);}
     function attempt(){
-      if(input===CORRECT_PIN){props.onUnlock('admin');}
-      else if(input===VIEWER_PIN){props.onUnlock('viewer');}
-      else if(input===TEAMLEAD_PIN){props.onUnlock('teamlead');}
-      else{setError(true);setShake(true);setInput("");setTimeout(function(){setShake(false);},500);}
+      if(!input||loading)return;
+      if(input===CORRECT_PIN){props.onUnlock('admin','Sasha');return;}
+      setLoading(true);
+      fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:input})})
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(data){
+          setLoading(false);
+          if(data&&data.role){props.onUnlock(data.role,data.displayName||'');}
+          else{fail();}
+        })
+        .catch(function(){setLoading(false);fail();});
     }
     return e('div',{style:{minHeight:"100vh",background:"#0a0f1a",display:"flex",alignItems:"center",justifyContent:"center"}},
       e('div',{className:shake?"shake":"",style:{background:"#0d1625",border:"1px solid #1e293b",borderRadius:18,padding:"40px 34px",width:"100%",maxWidth:340,textAlign:"center"}},
@@ -952,17 +1057,17 @@ window.addEventListener('load', function() {
         e('input',{type:"password",value:input,
           onChange:function(ev){setInput(ev.target.value);setError(false);},
           onKeyDown:function(ev){if(ev.key==="Enter")attempt();},
-          placeholder:"Password",autoFocus:true,
+          placeholder:"Password",autoFocus:true,disabled:loading,
           style:{width:"100%",background:"#1e293b",border:"1px solid "+(error?"#ef4444":"#334155"),borderRadius:9,padding:"11px 14px",color:"#e2e8f0",fontSize:15,marginBottom:8,textAlign:"center",letterSpacing:3,boxSizing:"border-box"}}),
         error?e('div',{style:{fontSize:12,color:"#ef4444",fontFamily:"monospace",marginBottom:8}},"Incorrect password — try again"):null,
-        e('button',{onClick:attempt,style:{width:"100%",background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",border:"none",borderRadius:9,padding:"12px",color:"#fff",fontSize:14,fontWeight:700,marginTop:4}},"Enter"),
+        e('button',{onClick:attempt,disabled:loading,style:{width:"100%",background:"linear-gradient(135deg,#3b82f6,#8b5cf6)",border:"none",borderRadius:9,padding:"12px",color:"#fff",fontSize:14,fontWeight:700,marginTop:4,opacity:loading?0.7:1}},loading?"Checking…":"Enter"),
         e('div',{style:{fontSize:11,color:"#334155",marginTop:14,fontFamily:"monospace"}},"Sasha's Air Quality Research · 2026")
       )
     );
   }
 
   // ── Dashboard (all hooks at top, no early return) ─────────────────────────
-  function Dashboard(props){var viewOnly=props.viewOnly||false;var role=props.role||'viewer';
+  function Dashboard(props){var viewOnly=props.viewOnly||false;var role=props.role||'viewer';var displayName=props.displayName||'';
     var BAKED_SESSIONS=[];
     var sv=useState([]),sessions=sv[0],setSessions=sv[1];
     var scv=useState({}),scenarios=scv[0],setScenarios=scv[1];
@@ -988,6 +1093,7 @@ window.addEventListener('load', function() {
     var lv=useState(false),loading=lv[0],setLoading=lv[1];
     var tv=useState(null),toast=tv[0],setToast=tv[1];
     var ncv=useState(false),showNewCat=ncv[0],setShowNewCat=ncv[1];
+    var umv=useState(false),showUserMgmt=umv[0],setShowUserMgmt=umv[1];
 
     function showToast(msg,ok){setToast({msg:msg,ok:ok!==false});setTimeout(function(){setToast(null);},3000);}
     function nextId(){return Math.max.apply(null,[0].concat(sessions.map(function(s){return s.id;})))+1;}
@@ -1074,6 +1180,7 @@ window.addEventListener('load', function() {
         e('div',{style:{flex:1}}),
         e('input',{value:search,onChange:function(ev){setSearch(ev.target.value);},placeholder:"Search…",
           style:{background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"7px 11px",color:"#e2e8f0",fontSize:13,width:160}}),
+        role==='admin'?e('button',{onClick:function(){setShowUserMgmt(true);},style:{background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"7px 10px",color:"#94a3b8",fontSize:12,cursor:"pointer",flexShrink:0}},"👥 Users"):null,
         e('button',{onClick:function(){try{localStorage.removeItem('ab_unlocked');}catch(e){}props.onLogout();},style:{background:"#1e293b",border:"1px solid #334155",borderRadius:8,padding:"7px 10px",color:"#94a3b8",fontSize:12,cursor:"pointer",flexShrink:0}},"⇠ Log out")
       ),
       e('div',{style:{overflowX:"auto",padding:"10px 20px 0",display:"flex",gap:4,borderBottom:"1px solid #1e293b",background:"#0d1625"}},
@@ -1093,7 +1200,7 @@ window.addEventListener('load', function() {
         cats.map(function(cat){
           var cs=filtered.filter(function(s){return s.category===cat;}).sort(function(a,b){return (a.trial||0)-(b.trial||0);});
           if(activeTab!=="all"||cs.length>0||!search)
-            return e(CategorySection,{key:cat,category:cat,sessions:cs,scenario:scenarios[cat]||"",userKey:props.userKey,
+            return e(CategorySection,{key:cat,category:cat,sessions:cs,scenario:scenarios[cat]||"",userKey:props.userKey,displayName:displayName,
               onScenarioChange:function(v){
                 fetch('/api/scenarios/'+encodeURIComponent(cat),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({scenario:v})}).catch(function(){});
                 setScenarios(function(sc){var o=Object.assign({},sc);o[cat]=v;return o;});
@@ -1114,6 +1221,7 @@ window.addEventListener('load', function() {
         })
       ),
       modal?e(Modal,{category:modal.category,session:modal.session,onSave:handleSave,onClose:function(){setModal(null);}}):null,
+      showUserMgmt?e(UserManageModal,{onClose:function(){setShowUserMgmt(false);}}):null,
       showNewCat?e(NewCategoryModal,{
         onSave:function(cat){
           if(!CATEGORY_META[cat.name]){
@@ -1276,15 +1384,23 @@ window.addEventListener('load', function() {
   // ── Root: switches between Login and Dashboard ─────────────────────────────
   function Root(){
     var uv=useState(function(){
-      try{return localStorage.getItem('ab_unlocked')||'';}catch(e){return '';}
-    }),unlocked=uv[0],setUnlocked=uv[1];
-    function unlock(role){
-      try{localStorage.setItem('ab_unlocked',role);}catch(e){}
-      setUnlocked(role);
+      try{
+        var s=localStorage.getItem('ab_unlocked')||'';
+        if(!s)return null;
+        if(s.charAt(0)==='{')return JSON.parse(s);
+        return {role:s,displayName:s==='admin'?'Sasha':''};
+      }catch(e){return null;}
+    }),auth=uv[0],setAuth=uv[1];
+    function unlock(role,displayName){
+      var data={role:role,displayName:displayName||''};
+      try{localStorage.setItem('ab_unlocked',JSON.stringify(data));}catch(e){}
+      setAuth(data);
     }
-    function logout(){try{localStorage.removeItem('ab_unlocked');}catch(e){}setUnlocked('');}
-    if(!unlocked)return e(Login,{onUnlock:unlock});
-    return e(Dashboard,{viewOnly:unlocked!=='admin',role:unlocked,userKey:unlocked,onLogout:logout});
+    function logout(){try{localStorage.removeItem('ab_unlocked');}catch(e){}setAuth(null);}
+    if(!auth)return e(Login,{onUnlock:unlock});
+    var role=auth.role||'viewer';
+    var displayName=auth.displayName||'';
+    return e(Dashboard,{viewOnly:role!=='admin',role:role,displayName:displayName,userKey:role,onLogout:logout});
   }
 
   RD.createRoot(document.getElementById("root")).render(e(Root,null));
