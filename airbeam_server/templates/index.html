@@ -730,7 +730,7 @@ window.addEventListener('load', function() {
         style:{display:"flex",alignItems:"center",gap:8,padding:"11px 14px",cursor:"pointer",userSelect:"none"}},
         e('div',{style:{width:8,height:8,borderRadius:"50%",background:pc,flexShrink:0,boxShadow:"0 0 5px "+pc}}),
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#94a3b8",minWidth:58}},"Trial "+(sess.trial||"—")),
-        sess.uploadedBy?e('div',{title:sess.uploadedBy,style:{width:20,height:20,borderRadius:"50%",background:nameColor(sess.uploadedBy),display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:700,color:"#fff",flexShrink:0,letterSpacing:0,cursor:"default"}},getInitials(sess.uploadedBy)):null,
+        sess.uploadedBy?e('div',{style:{background:nameColor(sess.uploadedBy),borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,color:"#fff",flexShrink:0,fontFamily:"monospace",whiteSpace:"nowrap"}},sess.uploadedBy):null,
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#64748b",minWidth:84}}),sess.date,
         e('span',{style:{fontFamily:"monospace",fontSize:11,color:"#64748b",minWidth:42}}),sess.time,
         e('div',{style:{flex:1,fontSize:13,color:"#cbd5e1",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},sess.location||sess.name||"—"),
