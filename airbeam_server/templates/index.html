@@ -362,7 +362,7 @@ window.addEventListener('load', function() {
   function SessionCharts(props){
     var session=props.session,activeMetric=props.activeMetric,onMetricChange=props.onMetricChange;
     var ts=session.timeSeries,nm=session.noteMarkers;
-    if(!ts||!ts.length)return e('div',{style:{textAlign:"center",padding:16,color:"#334155",fontFamily:"monospace",fontSize:12}},"Upload merged_sessions.xlsx to see graphs");
+    if(!ts||!ts.length)return e('div',{style:{textAlign:"center",padding:16,color:"#334155",fontFamily:"monospace",fontSize:12}},"Upload xlsx files to see graphs");
     var activeBands=props.customScales||PM_BANDS;
     var metrics=[
       {key:"pm25",color:"#60a5fa"},{key:"pm10",color:"#a78bfa"},
@@ -570,15 +570,20 @@ window.addEventListener('load', function() {
 
   function UploadZone(props){
     var ref=useRef();
-    function go(file){if(!file)return;file.arrayBuffer().then(function(buf){props.onUpload(buf,file.name);});}
+    var dv=useState(false),dragging=dv[0],setDragging=dv[1];
+    function goFiles(files){
+      var arr=Array.from(files).filter(function(f){return f.name.endsWith('.xlsx');});
+      if(arr.length)props.onUpload(arr);
+    }
     return e('div',{
-      onDragOver:function(ev){ev.preventDefault();},
-      onDrop:function(ev){ev.preventDefault();go(ev.dataTransfer.files[0]);},
+      onDragOver:function(ev){ev.preventDefault();setDragging(true);},
+      onDragLeave:function(){setDragging(false);},
+      onDrop:function(ev){ev.preventDefault();setDragging(false);goFiles(ev.dataTransfer.files);},
       onClick:function(){ref.current.click();},
-      style:{border:"2px dashed #334155",borderRadius:10,padding:"14px 20px",cursor:"pointer",textAlign:"center",background:"#0f172a",marginBottom:18}},
-      e('input',{ref:ref,type:"file",accept:".xlsx",style:{display:"none"},onChange:function(ev){go(ev.target.files[0]);}}),
+      style:{border:"2px dashed "+(dragging?"#3b82f6":"#334155"),borderRadius:10,padding:"14px 20px",cursor:"pointer",textAlign:"center",background:dragging?"#0f1f3a":"#0f172a",marginBottom:18,transition:"border-color 0.15s,background 0.15s"}},
+      e('input',{ref:ref,type:"file",accept:".xlsx",multiple:true,style:{display:"none"},onChange:function(ev){goFiles(ev.target.files);ev.target.value='';}}),
       e('div',{style:{fontSize:22,marginBottom:4}},"📂"),
-      e('div',{style:{fontFamily:"monospace",fontSize:13,color:"#64748b"}},props.loading?"Parsing…":"Drop merged_sessions.xlsx here · or click to upload")
+      e('div',{style:{fontFamily:"monospace",fontSize:13,color:"#64748b"}},props.loading?"Parsing…":"Drop xlsx files here, or click to select multiple")
     );
   }
 
@@ -641,27 +646,38 @@ window.addEventListener('load', function() {
 
     function showToast(msg,ok){setToast({msg:msg,ok:ok!==false});setTimeout(function(){setToast(null);},3000);}
     function nextId(){return Math.max.apply(null,[0].concat(sessions.map(function(s){return s.id;})))+1;}
-    function handleUpload(buf,fname){
+    function handleUpload(files){
       setLoading(true);
-      setTimeout(function(){
-        try{
-          var parsed=parseFile(buf);
-          setSessions(function(prev){
-            var ex=new Set(prev.map(function(s){return s.sheet;}));
-            var nw=parsed.filter(function(s){return!ex.has(s.sheet);});
-            var merged=prev.concat(nw);
-            var byCat={};
-            merged.forEach(function(s){if(!byCat[s.category])byCat[s.category]=[];byCat[s.category].push(s);});
-            Object.keys(byCat).forEach(function(cat){
-              byCat[cat].sort(function(a,b){return new Date(a.date+"T"+(a.time||"00:00")).getTime()-new Date(b.date+"T"+(b.time||"00:00")).getTime();});
-              byCat[cat].forEach(function(s,i){s.trial=i+1;});
-            });
-            showToast(nw.length+" session"+(nw.length!==1?"s":"")+" loaded · trials auto-numbered");
-            return merged;
+      var results=new Array(files.length).fill(null);
+      var pending=files.length;
+      files.forEach(function(file,fi){
+        file.arrayBuffer().then(function(buf){
+          try{results[fi]=parseFile(buf);}catch(e){results[fi]=[];}
+          pending--;if(pending===0)finish();
+        }).catch(function(){results[fi]=[];pending--;if(pending===0)finish();});
+      });
+      function finish(){
+        var allParsed=[].concat.apply([],results.filter(Boolean));
+        setSessions(function(prev){
+          var ex=new Set(prev.map(function(s){return s.sheet;}));
+          var nw=allParsed.filter(function(s){return!ex.has(s.sheet);});
+          var merged=prev.concat(nw);
+          var byCat={};
+          merged.forEach(function(s){if(!byCat[s.category])byCat[s.category]=[];byCat[s.category].push(s);});
+          Object.keys(byCat).forEach(function(cat){
+            byCat[cat].sort(function(a,b){return new Date(a.date+"T"+(a.time||"00:00")).getTime()-new Date(b.date+"T"+(b.time||"00:00")).getTime();});
+            byCat[cat].forEach(function(s,i){s.trial=i+1;});
           });
-        }catch(err){showToast("Could not parse file",false);}
+          if(nw.length){
+            fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(nw)})
+              .catch(function(){showToast('Saved locally but server sync failed',false);});
+          }
+          var label=files.length>1?(nw.length+" sessions from "+files.length+" files"):(nw.length+" session"+(nw.length!==1?"s":""));
+          showToast(label+" loaded · trials auto-numbered");
+          return merged;
+        });
         setLoading(false);
-      },50);
+      }
     }
     function handleSave(data){
       if(data.id){
