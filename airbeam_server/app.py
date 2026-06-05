@@ -66,6 +66,15 @@ def init_db():
 
 init_db()
 
+# Migrate existing DB
+def migrate_db():
+    with get_db() as con:
+        try:
+            con.execute("ALTER TABLE sessions ADD COLUMN gps_path TEXT DEFAULT '[]'")
+        except:
+            pass
+migrate_db()
+
 # ── Static files ──────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
