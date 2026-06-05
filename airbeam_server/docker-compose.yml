@@ -9,3 +9,4 @@ services:
       - "3500:5000"
     volumes:
       - ./airbeam.db:/app/airbeam.db
+      - ./templates:/app/templates

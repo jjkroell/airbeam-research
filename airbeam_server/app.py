@@ -47,7 +47,8 @@ def init_db():
             max_pm25  REAL,
             time_series TEXT DEFAULT '[]',
             note_markers TEXT DEFAULT '[]',
-            note_photos  TEXT DEFAULT '[]'
+            note_photos  TEXT DEFAULT '[]',
+            qa_thread    TEXT DEFAULT '[]'
         );
 
         CREATE TABLE IF NOT EXISTS scenarios (
@@ -73,6 +74,10 @@ def migrate_db():
             con.execute("ALTER TABLE sessions ADD COLUMN gps_path TEXT DEFAULT '[]'")
         except:
             pass
+        try:
+            con.execute("ALTER TABLE sessions ADD COLUMN qa_thread TEXT DEFAULT '[]'")
+        except:
+            pass
 migrate_db()
 
 # ── Static files ──────────────────────────────────────────────────────────────
@@ -92,6 +97,7 @@ def get_sessions():
         s["noteMarkers"]  = json.loads(s.pop("note_markers", "[]") or "[]")
         s["notePhotos"]   = json.loads(s.pop("note_photos",  "[]") or "[]")
         s["gpsPath"]      = json.loads(s.pop("gps_path",     "[]") or "[]")
+        s["qaThread"]     = json.loads(s.pop("qa_thread",    "[]") or "[]")
         s["maxPm25"]      = s.pop("max_pm25", None)
         sessions.append(s)
     return jsonify(sessions)
@@ -106,12 +112,13 @@ def upsert_sessions():
             con.execute("""
                 INSERT INTO sessions
                   (sheet,category,name,date,time,trial,location,iv1,iv2,iv3,iv4,
-                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,gps_path)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,gps_path,qa_thread)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(sheet) DO UPDATE SET
                   time_series=excluded.time_series,
                   note_markers=excluded.note_markers,
                   gps_path=excluded.gps_path,
+                  qa_thread=excluded.qa_thread,
                   category=excluded.category,
                   name=excluded.name,
                   date=excluded.date,
@@ -134,7 +141,8 @@ def upsert_sessions():
                 json.dumps(s.get("timeSeries",[])),
                 json.dumps(s.get("noteMarkers",[])),
                 json.dumps(s.get("notePhotos",[])),
-                json.dumps(s.get("gpsPath",[]))
+                json.dumps(s.get("gpsPath",[])),
+                json.dumps(s.get("qaThread",[]))
             ))
         # Recalculate trial numbers after bulk insert
         _recalc_trials(con)
@@ -154,7 +162,7 @@ def update_session(sid):
         con.execute("""
             UPDATE sessions SET
               location=?, iv1=?, iv2=?, iv3=?, iv4=?,
-              notes=?, trial=?, note_photos=?,
+              notes=?, trial=?, note_photos=?, note_markers=?, qa_thread=?,
               pm1=?, pm25=?, pm10=?, temp=?, humidity=?
             WHERE id=?
         """, (
@@ -165,7 +173,9 @@ def update_session(sid):
             s.get("iv4",     existing.get("iv4","")),
             s.get("notes",   existing.get("notes","")),
             s.get("trial",   existing.get("trial","")),
-            json.dumps(s.get("notePhotos", json.loads(existing.get("note_photos","[]") or "[]"))),
+            json.dumps(s.get("notePhotos",   json.loads(existing.get("note_photos",  "[]") or "[]"))),
+            json.dumps(s.get("noteMarkers",  json.loads(existing.get("note_markers", "[]") or "[]"))),
+            json.dumps(s.get("qaThread",     json.loads(existing.get("qa_thread",    "[]") or "[]"))),
             s.get("pm1",     existing.get("pm1")),
             s.get("pm25",    existing.get("pm25")),
             s.get("pm10",    existing.get("pm10")),
