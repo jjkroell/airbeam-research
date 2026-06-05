@@ -518,6 +518,8 @@ window.addEventListener('load', function() {
     var session=props.session,activeMetric=props.activeMetric,onMetricChange=props.onMetricChange;
     var ts=session.timeSeries,nm=session.noteMarkers;
     var cmv=useState(null),chartModal=cmv[0],setChartModal=cmv[1];
+    var env=useState(null),editingNoteIdx=env[0],setEditingNoteIdx=env[1];
+    var etv=useState(""),editText=etv[0],setEditText=etv[1];
     if(!ts||!ts.length)return e('div',{style:{textAlign:"center",padding:16,color:"#334155",fontFamily:"monospace",fontSize:12}},"Upload xlsx files to see graphs");
     var activeBands=props.customScales||PM_BANDS;
     var metrics=[
@@ -544,9 +546,30 @@ window.addEventListener('load', function() {
         onClose:function(){setChartModal(null);}}):null,
       nm&&nm.length?e('div',{style:{borderTop:"1px solid #1e293b",marginTop:6,paddingTop:6}},
         nm.map(function(n,i){
-          return e('div',{key:i,style:{display:"flex",gap:6,marginBottom:4,fontSize:11,fontFamily:"monospace"}},
-            e('span',{style:{color:"#94a3b8"}},n.t.slice(0,5)),
-            e('span',{style:{color:"#64748b",marginLeft:6}},n.note));
+          var isEditing=editingNoteIdx===i;
+          if(isEditing){
+            return e('div',{key:i,style:{display:"flex",gap:6,marginBottom:6,alignItems:"flex-start",fontSize:11,fontFamily:"monospace"}},
+              e('span',{style:{color:"#94a3b8",paddingTop:6,flexShrink:0}},n.t.slice(0,5)),
+              e('div',{style:{flex:1}},
+                e('textarea',{value:editText,onChange:function(ev){setEditText(ev.target.value);},rows:2,
+                  style:{background:"#0f172a",border:"1px solid #3b82f6",borderRadius:6,padding:"4px 8px",color:"#e2e8f0",fontSize:11,width:"100%",resize:"vertical",minHeight:48,boxSizing:"border-box",fontFamily:"'DM Sans',sans-serif"}}),
+                e('div',{style:{display:"flex",gap:6,marginTop:4,justifyContent:"flex-end"}},
+                  e('button',{onClick:function(){setEditingNoteIdx(null);},style:{background:"#334155",border:"none",borderRadius:6,padding:"4px 10px",color:"#94a3b8",fontSize:11,cursor:"pointer"}},"Cancel"),
+                  e('button',{onClick:function(){
+                    var updated=nm.map(function(m,j){return j===i?Object.assign({},m,{note:editText}):m;});
+                    if(props.onUpdateNoteMarkers)props.onUpdateNoteMarkers(updated);
+                    setEditingNoteIdx(null);
+                  },style:{background:"#3b82f6",border:"none",borderRadius:6,padding:"4px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}},"Save")
+                )
+              )
+            );
+          }
+          return e('div',{key:i,style:{display:"flex",gap:6,marginBottom:4,fontSize:11,fontFamily:"monospace",alignItems:"flex-start"}},
+            e('span',{style:{color:"#94a3b8",flexShrink:0}},n.t.slice(0,5)),
+            e('span',{style:{color:"#64748b",marginLeft:6,flex:1}},n.note),
+            !props.viewOnly?e('button',{onClick:function(){setEditingNoteIdx(i);setEditText(n.note||'');},
+              style:{background:"none",border:"none",color:"#475569",fontSize:10,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0}},"✎"):null
+          );
         })
       ):null
     );
@@ -706,7 +729,7 @@ window.addEventListener('load', function() {
         e('span',{style:{color:"#475569",marginLeft:8}},expanded?"▲":"▼")
       ),
       expanded?e('div',{style:{padding:"0 14px 14px",borderTop:"1px solid #334155"}},
-        e('div',{style:{marginTop:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric,customScales:props.customScales,onUpdateCategoryScales:props.onUpdateCategoryScales})),
+        e('div',{style:{marginTop:12}},e(SessionCharts,{session:sess,activeMetric:activeMetric,onMetricChange:setActiveMetric,customScales:props.customScales,onUpdateCategoryScales:props.onUpdateCategoryScales,viewOnly:props.viewOnly,onUpdateNoteMarkers:function(updated){props.onUpdateNotes(sess.id,updated);}})),
         e('div',{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12,alignItems:"stretch"}},
           e(StatBadge,{label:"PM1",value:sess.pm1,unit:"µg/m³",metric:"pm1"}),
           e(StatBadge,{label:"PM2.5 avg",value:sess.pm25,unit:"µg/m³",metric:"pm25"}),
