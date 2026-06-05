@@ -91,6 +91,7 @@ def get_sessions():
         s["timeSeries"]   = json.loads(s.pop("time_series",  "[]") or "[]")
         s["noteMarkers"]  = json.loads(s.pop("note_markers", "[]") or "[]")
         s["notePhotos"]   = json.loads(s.pop("note_photos",  "[]") or "[]")
+        s["gpsPath"]      = json.loads(s.pop("gps_path",     "[]") or "[]")
         s["maxPm25"]      = s.pop("max_pm25", None)
         sessions.append(s)
     return jsonify(sessions)
@@ -105,11 +106,12 @@ def upsert_sessions():
             con.execute("""
                 INSERT INTO sessions
                   (sheet,category,name,date,time,trial,location,iv1,iv2,iv3,iv4,
-                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   pm1,pm25,pm10,temp,humidity,notes,max_pm25,time_series,note_markers,note_photos,gps_path)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(sheet) DO UPDATE SET
                   time_series=excluded.time_series,
                   note_markers=excluded.note_markers,
+                  gps_path=excluded.gps_path,
                   category=excluded.category,
                   name=excluded.name,
                   date=excluded.date,
@@ -128,10 +130,11 @@ def upsert_sessions():
                 s.get("iv3",""), s.get("iv4",""),
                 s.get("pm1"), s.get("pm25"), s.get("pm10"),
                 s.get("temp"), s.get("humidity"), s.get("notes",""),
-                s.get("maxPm25"), 
+                s.get("maxPm25"),
                 json.dumps(s.get("timeSeries",[])),
                 json.dumps(s.get("noteMarkers",[])),
-                json.dumps(s.get("notePhotos",[]))
+                json.dumps(s.get("notePhotos",[])),
+                json.dumps(s.get("gpsPath",[]))
             ))
         # Recalculate trial numbers after bulk insert
         _recalc_trials(con)
